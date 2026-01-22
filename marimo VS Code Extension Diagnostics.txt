@@ -1,0 +1,41 @@
+marimo VS Code Extension Diagnostics
+=====================================
+
+Language Server (LSP):
+	UV Bin: Discovered (C:\Users\User\.local\bin\uv.exe)
+	UV: uv 0.9.8 (85c5d3228 2025-11-07) ✓
+	Using bundled marimo-lsp via uvx
+
+Python Extension:
+	Interpreter: c:\Python\python.exe
+	Version: 3.15.0.alpha.1
+
+Python Language Server (ty):
+	Status: running ✓
+	Version: 0.0.12 (4b74e4ded 2026-01-14)
+	Python: c:\Python\python.exe (3.15.0.alpha.1)
+
+Ruff Language Server:
+	Status: failed ✗
+	Error: Ruff extension (charliermarsh.ruff) is not installed.
+
+Extension Configuration:
+	Version: 0.9.1 
+	UV integration disabled: false 
+
+System Information:
+	Host: desktop 
+	IDE: Visual Studio Code 
+	IDE version: 1.108.1 
+	Platform: win32 
+	Architecture: x64 
+	Node version: v22.21.1 
+
+Common Issues:
+	1. If notebooks won't open:
+		- Check Python interpreter is selected
+		- Ensure marimo and pyzmq are installed
+		- Check 'marimo-lsp' output channel for errors
+	2. If features are missing:
+		- Ensure marimo version is >= 0.19.0
+		- Try reloading the window
