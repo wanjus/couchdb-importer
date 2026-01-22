@@ -12,7 +12,7 @@ import requests
 from pathlib import Path
 
 # ---------------------------------------------------------
-# Hilfsfunktion: Prfen, ob DB existiert – sonst erstellen
+# Hilfsfunktion: Prüfen, ob DB existiert – sonst erstellen
 # ---------------------------------------------------------
 def ensure_database(db_url, db_name, auth=None):
     url = f"{db_url}/{db_name}"
