@@ -4,6 +4,8 @@ title: "CSV & JSON nach CouchDB importieren – mein CouchDB-Importer"
 date: 2026-01-24
 ---
 
+# CouchDB-Importer
+
 # 🚀 Nie wieder Stress beim CouchDB-Import: CSV & JSON in Sekunden laden
 
 *"Nur mal kurz ein paar Testdaten importieren..."* – jeder Entwickler kennt diesen Satz. Und jeder weiß, dass daraus oft eine Stunde Frust wird: Kaputte JSON-Formate, Encoding-Fehler in CSVs oder endlose `curl`-Befehle, die man sich nie merken kann.
