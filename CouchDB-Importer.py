@@ -9,7 +9,14 @@ import csv
 import json
 import argparse
 import requests
+import base64
+import mimetypes
 from pathlib import Path
+
+try:
+    import PyPDF2
+except ImportError:
+    PyPDF2 = None
 
 # ---------------------------------------------------------
 # Hilfsfunktion: Prüfen, ob DB existiert – sonst erstellen
@@ -17,7 +24,7 @@ from pathlib import Path
 def ensure_database(db_url, db_name, auth=None):
     url = f"{db_url}/{db_name}"
     try:
-        r = requests.get(url, auth=auth)
+        r = requests.get(url, auth=auth, timeout=10)
     except requests.exceptions.RequestException as e:
         print(f"✖ Verbindungsfehler zu CouchDB ({url}): {e}")
         return False
@@ -28,7 +35,7 @@ def ensure_database(db_url, db_name, auth=None):
 
     if r.status_code == 404:
         print(f"⚠ Datenbank '{db_name}' existiert nicht – wird erstellt...")
-        r = requests.put(url, auth=auth)
+        r = requests.put(url, auth=auth, timeout=10)
         if r.status_code in (200, 201):
             print(f"✔ Datenbank '{db_name}' wurde erstellt.")
             return True
@@ -46,21 +53,16 @@ def ensure_database(db_url, db_name, auth=None):
 def read_csv_data(file_path, id_column=None):
     print(f"ℹ Lese CSV-Datei: {file_path}")
     
-    # Spalten validieren
+    rows = []
     with open(file_path, newline='', encoding='utf-8') as f:
+        # Erstes Einlesen für Spalten-Validierung und Zeilen-Zählung
         reader = csv.DictReader(f)
         columns = reader.fieldnames
         if id_column and id_column not in columns:
             raise ValueError(f"Die ID-Spalte '{id_column}' existiert nicht in der CSV ({columns}).")
-
-    rows = []
-    with open(file_path, newline='', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        # Zeilen zhlen fr Fortschritt (ungefhr)
-        total = sum(1 for _ in open(file_path, encoding='utf-8')) - 1
-        f.seek(0)
-        next(reader) # Header berspringen
-
+        
+        # Zeilen zählen (wir sind bereits nach dem Header)
+        # Wir sammeln die Zeilen direkt, um nicht doppelt zu lesen
         for i, row in enumerate(reader, start=1):
             # ID setzen
             doc_id = row[id_column] if id_column else str(i)
@@ -69,9 +71,11 @@ def read_csv_data(file_path, id_column=None):
                 row["_id"] = doc_id
             
             rows.append(row)
-            print(f"→ Verarbeite Zeile {i}/{total}", end="\r")
+            # Fortschrittsanzeige (wir kennen das Total noch nicht genau ohne Vorab-Scan, 
+            # aber wir können es einfach hochzählen)
+            print(f"→ Verarbeite Zeile {i}", end="\r")
     
-    print("\n✔ CSV vollstndig eingelesen.")
+    print(f"\n✔ CSV vollständig eingelesen ({len(rows)} Dokumente).")
     return rows
 
 
@@ -81,51 +85,108 @@ def read_csv_data(file_path, id_column=None):
 def read_json_data(file_path, id_column=None):
     print(f"ℹ Lese JSON-Datei: {file_path}")
     
-    with open(file_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-
     rows = []
-    
-    # Fall 1: Format {"docs": [...]} (CouchDB Standard)
-    if isinstance(data, dict) and "docs" in data:
-        print("ℹ Erkanntes Format: {'docs': [...]}")
-        rows = data["docs"]
-    
-    # Fall 2: Format [...] (Liste von Objekten)
-    elif isinstance(data, list):
-        print("ℹ Erkanntes Format: Liste [...]")
-        # Smart Wrap: Prüfen, ob die Elemente Objekte sind. Wenn nicht (z.B. Strings), verpacken.
-        cleaned_rows = []
-        for item in data:
-            if isinstance(item, dict):
-                cleaned_rows.append(item)
-            else:
-                # "Action" -> {"value": "Action"}
-                cleaned_rows.append({"value": item})
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            # Versuch 1: Standard JSON (Liste oder Objekt)
+            try:
+                data = json.load(f)
+                if isinstance(data, dict) and "docs" in data:
+                    print("ℹ Erkanntes Format: {'docs': [...]}")
+                    rows = data["docs"]
+                elif isinstance(data, list):
+                    print("ℹ Erkanntes Format: Liste [...]")
+                    rows = data
+                elif isinstance(data, dict):
+                    print("ℹ Erkanntes Format: Einzelnes Objekt {...}")
+                    rows = [data]
+            except json.JSONDecodeError:
+                # Versuch 2: JSON Lines (JSONL)
+                f.seek(0)
+                print("ℹ Versuche Format: JSON Lines (JSONL)...")
+                for line_num, line in enumerate(f, start=1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rows.append(json.loads(line))
+                    except json.JSONDecodeError as e:
+                        print(f"⚠ Fehler in Zeile {line_num}: {e}")
+                
+                if rows:
+                    print(f"✔ Erkanntes Format: JSONL ({len(rows)} Dokumente)")
+                else:
+                    raise ValueError("Unbekanntes JSON-Format oder ungültiges JSON.")
+
+    except Exception as e:
+        raise ValueError(f"Fehler beim Verarbeiten der JSON-Datei: {e}")
+
+    # Smart Wrap & IDs
+    cleaned_rows = []
+    for i, item in enumerate(rows):
+        doc = item
+        if not isinstance(item, dict):
+            doc = {"value": item}
         
-        if len(cleaned_rows) > 0 and cleaned_rows != data:
-             print("⚠ Liste enthielt einfache Werte (Strings/Zahlen). Habe sie automatisch in {'value': ...} Objekte umgewandelt.")
+        if id_column and id_column in doc:
+            doc["_id"] = str(doc[id_column])
         
-        rows = cleaned_rows
+        cleaned_rows.append(doc)
+
+    print(f"✔ {len(cleaned_rows)} Dokumente aus JSON geladen.")
+    return cleaned_rows
+
+
+# ---------------------------------------------------------
+# Logik: PDF einlesen (Text extrahieren + Attachment)
+# ---------------------------------------------------------
+def read_pdf_data(file_path):
+    print(f"ℹ Lese PDF-Datei: {file_path}")
     
-    # Fall 3: Einzelnes Objekt {...}
-    elif isinstance(data, dict):
-        print("ℹ Erkanntes Format: Einzelnes Objekt {...}")
-        rows = [data]
+    p = Path(file_path)
+    text_content = ""
+    
+    # 1. Textextraktion versuchen
+    if PyPDF2:
+        try:
+            with open(file_path, 'rb') as f:
+                reader = PyPDF2.PdfReader(f)
+                for page in reader.pages:
+                    text_content += page.extract_text() + "\n"
+        except Exception as e:
+            print(f"⚠ Konnte Text aus PDF nicht extrahieren: {e}")
     else:
-        raise ValueError("Unbekanntes JSON-Format. Erwarte Liste oder {'docs': [...]}.")
+        print("⚠ PyPDF2 nicht installiert. Überspringe Textextraktion.")
 
-    # Optional: IDs anpassen/setzen, falls id_column gewnscht ist
-    if id_column:
-        print(f"ℹ Verwende Feld '{id_column}' als _id...")
-        for i, doc in enumerate(rows):
-            if id_column in doc:
-                doc["_id"] = str(doc[id_column])
-            # Falls die Spalte fehlt, optional warnen oder ignorieren. 
-            # Hier: Wir lassen es so, CouchDB generiert dann eine UUID wenn _id fehlt.
+    text_content = text_content.strip()
+    if not text_content:
+        text_content = "[Kein Textinhalt extrahierbar]"
 
-    print(f"✔ {len(rows)} Dokumente aus JSON geladen.")
-    return rows
+    # 2. Datei als Attachment vorbereiten (Base64)
+    try:
+        with open(file_path, 'rb') as f:
+            file_data = f.read()
+            base64_data = base64.b64encode(file_data).decode('utf-8')
+    except Exception as e:
+        raise ValueError(f"Fehler beim Lesen der PDF-Datei für Attachment: {e}")
+
+    # CouchDB Dokument mit Inline-Attachment
+    mime_type = mimetypes.guess_type(file_path)[0] or "application/pdf"
+    
+    doc = {
+        "filename": p.name,
+        "content_type": "pdf",
+        "extracted_text": text_content,
+        "_attachments": {
+            p.name: {
+                "content_type": mime_type,
+                "data": base64_data
+            }
+        }
+    }
+
+    print(f"✔ PDF erfolgreich verarbeitet (Textlänge: {len(text_content)} Zeichen).")
+    return [doc]
 
 
 # ---------------------------------------------------------
@@ -148,9 +209,11 @@ def import_file_to_couchdb(file_path, db_url, db_name, user=None, password=None,
             rows = read_csv_data(file_path, id_column)
         elif ext == '.json':
             rows = read_json_data(file_path, id_column)
+        elif ext == '.pdf':
+            rows = read_pdf_data(file_path)
         else:
             print(f"✖ Nicht untersttztes Dateiformat: {ext}")
-            print("Bitte nutze .csv oder .json")
+            print("Bitte nutze .csv, .json oder .pdf")
             return
     except Exception as e:
         print(f"\n✖ Fehler beim Lesen der Datei: {e}")
@@ -166,7 +229,7 @@ def import_file_to_couchdb(file_path, db_url, db_name, user=None, password=None,
 
     print(f"ℹ Sende {len(rows)} Dokumente an CouchDB...")
     try:
-        response = requests.post(url, json=payload, auth=auth)
+        response = requests.post(url, json=payload, auth=auth, timeout=30)
         print("Status:", response.status_code)
         
         # Kurze Zusammenfassung statt riesigem JSON-Dump bei Erfolg
@@ -191,10 +254,10 @@ def import_file_to_couchdb(file_path, db_url, db_name, user=None, password=None,
 # ---------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(
-        description="Universal CouchDB Importer (CSV & JSON) mit Auto-DB & Validierung"
+        description="Universal CouchDB Importer (CSV, JSON & PDF) mit Auto-DB & Validierung"
     )
 
-    parser.add_argument("--file", required=True, help="Pfad zur Datei (.csv oder .json)")
+    parser.add_argument("--file", required=True, help="Pfad zur Datei (.csv, .json oder .pdf)")
     parser.add_argument("--db", required=True, help="Name der CouchDB-Datenbank")
     parser.add_argument("--url", default="http://localhost:5984", help="CouchDB-URL (Standard: http://localhost:5984)")
     parser.add_argument("--user", help="CouchDB Benutzername")
