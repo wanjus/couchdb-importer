@@ -17,11 +17,12 @@ Unser [CouchDB-Importer](https://github.com/wanjus/couchdb-importer) ist ein "Sc
 
 ### Was kann es?
 
-1.  **CSV & JSON Support:** Egal ob Excel-Export oder API-Dump, das Tool frisst beides.
-2.  **Intelligent:** JSON-Liste? `docs`-Wrapper? Einzelnes Objekt? Das Skript erkennt das Format automatisch.
-3.  **Auto-DB:** Wenn die Zieldatenbank nicht existiert, wird sie einfach erstellt. Kein manuelles `PUT` mehr nötig.
-4.  **Fehlertolerant:** Einfache Strings in einer Liste werden automatisch in Objekte verpackt, damit CouchDB sie akzeptiert.
-5.  **Feedback:** Ein sauberer Fortschrittsbalken zeigt dir, was passiert.
+1.  **CSV, JSON & PDF Support:** Egal ob Excel-Export, API-Dump oder Dokumenten-Archiv, das Tool frisst jetzt alles.
+2.  **PDF-Intelligenz:** PDFs werden nicht nur als Binärdatei angehängt, sondern das Skript versucht auch, den Text zu extrahieren, damit er in CouchDB durchsuchbar ist.
+3.  **JSON & JSONL:** Neben Standard-JSON-Listen wird nun auch das populäre JSON-Lines-Format (`.jsonl`) unterstützt.
+4.  **Auto-DB:** Wenn die Zieldatenbank nicht existiert, wird sie einfach erstellt. Kein manuelles `PUT` mehr nötig.
+5.  **Robustheit:** Timeouts verhindern, dass das Skript bei Netzwerkproblemen hängen bleibt. Einfache Werte werden automatisch in Objekte verpackt.
+6.  **Feedback:** Eine Fortschrittsanzeige hält dich auf dem Laufenden.
 
 ## Schnellstart
 

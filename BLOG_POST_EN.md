@@ -17,11 +17,12 @@ Our [CouchDB-Importer](https://github.com/wanjus/couchdb-importer) is a "Swiss A
 
 ### What can it do?
 
-1.  **CSV & JSON Support:** Whether it's an Excel export or an API dump, the tool handles both.
-2.  **Intelligent:** JSON list? `docs` wrapper? Single object? The script detects the format automatically.
-3.  **Auto-DB:** If the target database doesn't exist, it's created automatically. No more manual `PUT` requests.
-4.  **Fault Tolerant:** Simple strings in a list are automatically wrapped in objects so CouchDB accepts them.
-5.  **Feedback:** A clean progress bar shows you exactly what's happening.
+1.  **CSV, JSON & PDF Support:** Whether it's an Excel export, an API dump, or a document archive, the tool handles it all.
+2.  **PDF Intelligence:** PDFs aren't just attached as binary files; the script also tries to extract text content to make it searchable within CouchDB.
+3.  **JSON & JSONL:** In addition to standard JSON lists, the popular JSON Lines format (`.jsonl`) is now supported.
+4.  **Auto-DB:** If the target database doesn't exist, it's created automatically. No more manual `PUT` requests.
+5.  **Robust:** Network timeouts prevent the script from hanging, and simple data types are automatically wrapped into objects.
+6.  **Feedback:** A clean progress bar shows you exactly what's happening.
 
 ## Quick Start
 
